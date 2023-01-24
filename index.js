@@ -21,7 +21,6 @@ class PeerComponent extends HTMLElement {
         <textarea class="peer_message"></textarea>
         <button class="send_message">Send</button>
         <div class="peer_status">Connected</div>
-
       `
       this.peer_status = this.querySelector('.peer_status');
       this.querySelector('.send_message').addEventListener('click', () => {
@@ -104,6 +103,12 @@ class SyncComponent extends HTMLElement {
     })
   }
 
+  broadcastMessage(message){
+    const peers = this.querySelectorAll('peer-component');
+    [...peers].forEach(peer => {
+      peer.sendMessageToPeer(message)
+    })
+  }
 
   async getUUID(){
     if(this.uuid){
@@ -124,6 +129,7 @@ class SyncComponent extends HTMLElement {
     this.uuid = self.crypto.randomUUID();
     await localforage.setItem(window.location.host, this.uuid);
     this.qr_code.setAttribute('value',  `${window.location.href}?&target=${this.uuid}`);
+    this.createConnection();
   }
 
   getURLValues(URL = window.location.href ){
