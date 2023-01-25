@@ -1,14 +1,52 @@
+/*
+  
+  **** BEGIN ASCII ART ****
+     _______  ___   ________
+    / ___/\ \/ / | / / ____/
+    \__ \  \  /  |/ / /
+   ___/ /  / / /|  / /___
+  /____/  /_/_/ |_/\____/
+  COMPONENT
+  
+  **** END ASCII ART ****
+
+  This component is an easy way to sync
+  two web browsers using only an HTML Element.
+
+  To use, include this index.js file and linked
+  JS files. 
+
+  Use like :
+
+    <sync-component></sync-component>
+
+  Sync Component has no concept of a "user", 
+  and it never will. It should be used and reasoned 
+  about as two specific devices and how they will interact. 
+
+*/
+
+
 import "./qr-code.js"
 import "./peerjs.min.js";
 import "./localforage.min.js";
 
 class PeerComponent extends HTMLElement {
   connectedCallback(){
+    const verbose = this.getAttribute('verbose');
+    if(verbose === null){
+      this.verbose = false;
+    } else {
+      this.verbose = true;
+    }
     this.target = this.getAttribute('target');
     this.innerHTML = `
       <button class="connect_to_peer_button">Connect to ${this.target}</button>
       <div class="peer_status">Connected</div>
     `
+    this.peer_status = this.querySelector('.peer_status');
+
+
     this.querySelector('.connect_to_peer_button').addEventListener('click', (e)=>{
       this.connectToPeer()
     })
@@ -22,7 +60,7 @@ class PeerComponent extends HTMLElement {
         <button class="send_message">Send</button>
         <div class="peer_status">Connected</div>
       `
-      this.peer_status = this.querySelector('.peer_status');
+
       this.querySelector('.send_message').addEventListener('click', () => {
         const peer_message = this.querySelector('.peer_message');
         const message = peer_message.value; 
@@ -32,24 +70,34 @@ class PeerComponent extends HTMLElement {
     })
   }
 
+  updateView(update){
+    console.log(update, this.verbose)
+    if(!this.verbose) return
+    this.peer_status = this.querySelector('.peer_status');
+    this.peer_status.innerHTML = update
+  }
+
   handleMessage(message){
     this.peer_status = this.querySelector('.peer_status');
-    this.peer_status.innerHTML = `
+    this.updateView(`
       <div>
         <h3>Message recieved:</h3>
         <p>${message}</p>
       </div>
-    `
+    `)
+    this.dispatchEvent(new CustomEvent("MESSAGE RECEIVED", {
+      detail: { message }
+    }));
   }
 
   sendMessageToPeer(message){
     this.connection.send(message);
-    this.peer_status.innerHTML = `
+    this.updateView(`
       <div>
         <h3>Sent Message:</h3>
         <p>${message}</p>
       </div>
-    `
+    `)
   }
 
 }
@@ -63,6 +111,16 @@ class SyncComponent extends HTMLElement {
     this.uuid = await this.getUUID();
     this.qr_code.setAttribute('value', `${window.location.href}?&target=${this.uuid}`);
     this.options = this.getURLValues();
+
+
+    const reconnect_button = document.createElement('button')
+    reconnect_button.innerText = 'Reconnect Devices';
+    reconnect_button.addEventListener('click', ()=>{
+      this.reconnectDevices();
+      reconnect_button.remove();
+    });
+
+    this.qr_code.appendChild(reconnect_button)
     // Control Buttons
     const detail = this.detail = document.createElement('details');
     detail.setAttribute('open', true)
@@ -77,30 +135,55 @@ class SyncComponent extends HTMLElement {
     cycle_keys.addEventListener('click', (e) => {
       this.generateNewKey();
     });
-    this.createConnection();
-    if(this.options.target){
-      const new_peer = document.createElement('peer-component');
-      new_peer.setAttribute('target', this.options.target);
-      this.appendChild(new_peer);
-    }
-  }
 
-  async createConnection(){
     this.peer = new Peer(await this.getUUID());
     sync_status.innerText += `Connection created with id ${this.uuid}`;
     this.peer.on('connection', (conn) => {
-      // check if there is a peer component
-      // if there isn't, create a new peer component button
-      let peer = this.querySelector(`[target="${conn.peer}"]`);
-      if(peer === null){
-        peer = document.createElement('peer-component');
-        peer.setAttribute('target', conn.peer);
-        this.appendChild(peer);
-      }
-      conn.on('data', (data) => {
-        peer.handleMessage(data)
-      })    
+      this.handleNewDevice(conn)
     })
+
+    if(this.options.target){
+      this.createNewPeerElement(this.options.target);
+    }
+  }
+
+  createNewPeerElement(target){
+    let peer = this.querySelector(`[target="${target}"]`);
+    if(peer === null){
+      peer = document.createElement('peer-component');
+      peer.setAttribute('target', target);
+      peer.setAttribute('verbose', true);
+      this.appendChild(peer);
+      this.storeDevice(target);
+    }
+    return peer;
+  }
+
+  async handleNewDevice(conn){
+    const peer = this.createNewPeerElement(conn.peer);      
+    conn.on('data', (data) => {
+      peer.handleMessage(data)
+    });
+  }
+
+  async storeDevice(id){
+    let peers = await localforage.getItem(this.uuid); 
+    if(peers === null){
+      peers = [];
+    }
+
+    if(peers.indexOf(id) > -1){
+      return
+    } else {
+      peers.push(id);
+      localforage.setItem(this.uuid, peers);
+    }
+  }
+
+  async reconnectDevices(){
+    console.log('reconnectDevices');
+    let peers = await localforage.getItem(this.uuid); 
+    console.log(peers);
   }
 
   broadcastMessage(message){
@@ -112,7 +195,6 @@ class SyncComponent extends HTMLElement {
 
   async getUUID(){
     if(this.uuid){
-      console.log(this.uuid)
       return this.uuid;
     } else {
       const uuid = await localforage.getItem(window.location.host);
