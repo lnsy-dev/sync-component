@@ -40,13 +40,14 @@ class PeerComponent extends HTMLElement {
       this.verbose = true;
     }
     this.target = this.getAttribute('target');
+    if(this.target === null){
+      return console.error("Peer Component Requires a Target ID");
+    }
     this.innerHTML = `
       <button class="connect_to_peer_button">Connect to ${this.target}</button>
       <div class="peer_status">Connected</div>
     `
     this.peer_status = this.querySelector('.peer_status');
-
-
     this.querySelector('.connect_to_peer_button').addEventListener('click', (e)=>{
       this.connectToPeer()
     })
@@ -112,15 +113,6 @@ class SyncComponent extends HTMLElement {
     this.qr_code.setAttribute('value', `${window.location.href}?&target=${this.uuid}`);
     this.options = this.getURLValues();
 
-
-    const reconnect_button = document.createElement('button')
-    reconnect_button.innerText = 'Reconnect Devices';
-    reconnect_button.addEventListener('click', ()=>{
-      this.reconnectDevices();
-      reconnect_button.remove();
-    });
-
-    this.qr_code.appendChild(reconnect_button)
     // Control Buttons
     const detail = this.detail = document.createElement('details');
     detail.setAttribute('open', true)
@@ -178,12 +170,6 @@ class SyncComponent extends HTMLElement {
       peers.push(id);
       localforage.setItem(this.uuid, peers);
     }
-  }
-
-  async reconnectDevices(){
-    console.log('reconnectDevices');
-    let peers = await localforage.getItem(this.uuid); 
-    console.log(peers);
   }
 
   broadcastMessage(message){
