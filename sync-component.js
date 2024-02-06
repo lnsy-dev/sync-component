@@ -75,7 +75,7 @@ class SyncComponent extends DataroomElement {
       this.innerHTML = `<div>
         <p>Connected to server. Waiting for peer.</p>
       </div>`
-      this.setAttribute('peer-link', `https://${window.location.host}?&peer-id=${id}`);
+      this.setAttribute('peer-link', `${window.location.href}?&peer-id=${id}`);
       this.dtrmEvent('SERVER-CONNECTION-OPEN');
     }
   }
