@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import '../src/sync-component.js';
+import { checksum } from '../src/file-transfer.js';
 
 /**
  * Creates a sync-component element without attaching it to the DOM,
@@ -154,5 +155,152 @@ describe('sync-component', () => {
     el.sendMessage('ping');
 
     expect(send).toHaveBeenCalledWith({ message: 'ping' });
+  });
+
+  it('does not emit PEER-MESSAGE for file protocol messages', () => {
+    const handler = vi.fn();
+    el.addEventListener('PEER-MESSAGE', handler);
+    el.peer_connection = { send: vi.fn() };
+
+    el.handleNewMessage({ type: 'file-meta', transferId: 't1' });
+
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it('receives a chunked file and emits FILE-RECEIVED with a Blob', () => {
+    window.URL.createObjectURL = vi.fn(() => 'blob:mock-url');
+    const send = vi.fn();
+    el.peer_connection = { send };
+    el.innerHTML = '<p class="file-download"></p>';
+    const receivedHandler = vi.fn();
+    el.addEventListener('FILE-RECEIVED', receivedHandler);
+
+    const data = new Uint8Array([4, 5, 6, 7]);
+    el.handleNewMessage({
+      type: 'file-meta',
+      transferId: 't1',
+      name: 'photo.png',
+      mimeType: 'image/png',
+      size: 4,
+      totalChunks: 1,
+      fileChecksum: checksum(data)
+    });
+    el.handleNewMessage({
+      type: 'file-chunk',
+      transferId: 't1',
+      index: 0,
+      checksum: checksum(data),
+      data
+    });
+
+    expect(receivedHandler).toHaveBeenCalledOnce();
+    const detail = receivedHandler.mock.calls[0][0].detail;
+    expect(detail.name).toBe('photo.png');
+    expect(detail.size).toBe(4);
+    expect(detail.blob).toBeInstanceOf(Blob);
+    expect(send).toHaveBeenCalledWith({ type: 'file-complete', transferId: 't1' });
+    expect(el.querySelector('.file-download a')?.download).toBe('photo.png');
+  });
+
+  it('routes acks and resend requests to the active sender', () => {
+    el.fileSender = { handleMessage: vi.fn() };
+
+    const ack = { type: 'file-window-ack', transferId: 't1', windowEnd: 16 };
+    el.handleNewMessage(ack);
+
+    expect(el.fileSender.handleMessage).toHaveBeenCalledWith(ack);
+  });
+
+  it('sends a file through the peer connection in chunks', async () => {
+    const send = vi.fn();
+    el.peer_connection = { send };
+
+    el.sendFile(new File(['hello'], 'hello.txt', { type: 'text/plain' }), { timeout: 50 });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    const meta = send.mock.calls.map(([msg]) => msg).find((msg) => msg.type === 'file-meta');
+    expect(meta).toMatchObject({
+      name: 'hello.txt',
+      mimeType: 'text/plain',
+      size: 5,
+      totalChunks: 1
+    });
+    expect(send.mock.calls.some(([msg]) => msg.type === 'file-chunk')).toBe(true);
+  });
+
+  it('rejects when sending a file without a connection', async () => {
+    await expect(el.sendFile(new Blob(['x']))).rejects.toThrow('No peer connected');
+  });
+
+  it('calls handleNewConnection when the peer connection opens', async () => {
+    vi.useFakeTimers();
+    try {
+      let openCb;
+      const conn = {
+        on: vi.fn((event, cb) => { if (event === 'open') openCb = cb; }),
+        close: vi.fn()
+      };
+      el.peer = { connect: vi.fn(() => conn) };
+      el.handleNewConnection = vi.fn();
+
+      const promise = el.connectToPeer('target-peer');
+      openCb();
+      await promise;
+
+      expect(el.handleNewConnection).toHaveBeenCalledWith(conn);
+      expect(conn.close).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('retries and finally errors when the connection never opens', async () => {
+    vi.useFakeTimers();
+    try {
+      const conn = { on: vi.fn(), close: vi.fn() };
+      el.peer = { connect: vi.fn(() => conn) };
+      const errHandler = vi.fn();
+      const retryHandler = vi.fn();
+      el.addEventListener('PEER-CONNECTION-ERROR', errHandler);
+      el.addEventListener('PEER-CONNECTION-RETRY', retryHandler);
+
+      const promise = el.connectToPeer('target-peer');
+      for (let i = 0; i < 3; i++) {
+        await vi.advanceTimersByTimeAsync(10000);
+      }
+      await promise;
+
+      expect(el.peer.connect).toHaveBeenCalledTimes(3);
+      expect(conn.close).toHaveBeenCalled();
+      expect(retryHandler).toHaveBeenCalledTimes(2);
+      expect(errHandler).toHaveBeenCalledOnce();
+      expect(errHandler.mock.calls[0][0].detail.type).toBe('connect-timeout');
+      expect(el.innerHTML).toContain('timed out');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('stands down when the peer is reported unavailable mid-connect', async () => {
+    vi.useFakeTimers();
+    try {
+      const conn = { on: vi.fn(), close: vi.fn() };
+      el.peer = { connect: vi.fn(() => conn) };
+      const errHandler = vi.fn();
+      el.addEventListener('PEER-CONNECTION-ERROR', errHandler);
+
+      const promise = el.connectToPeer('ghost-peer');
+      el.handleError(new Error('Could not connect to peer ghost-peer'));
+      await vi.advanceTimersByTimeAsync(10000);
+      await promise;
+
+      // No retry: the peer-level error already reported the failure.
+      expect(el.peer.connect).toHaveBeenCalledOnce();
+      expect(conn.close).toHaveBeenCalledOnce();
+      expect(errHandler).toHaveBeenCalledOnce();
+      expect(el.innerHTML).toContain('Please check the link');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

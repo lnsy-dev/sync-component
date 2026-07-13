@@ -3,11 +3,285 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SYNC COMPONENT</title>
+  <title>Share Files and Chat</title>
+  <!--
+    Demo styles are inlined so the page's load event is not delayed by an
+    extra request — the sync-component boots exactly as fast as it would
+    without the demo chrome. Third-party elements (github-icon, qr-code)
+    and the Fira Code font are injected by demo.js AFTER window load, so
+    they never slow down the component either.
+  -->
+  <style>
+    /*
+     * Styles for the "Share Files and Chat" demo page ONLY, matching the
+     * look of https://lnsy.blog/ (parchment background, Fira Code
+     * monospace, italic brown links, //// rules, flipped logo).
+     *
+     * Everything is scoped to the demo page chrome (`.demo-*` classes plus
+     * page-level body/html); the <sync-component> internals are never
+     * targeted, so consumers can style the component without interference.
+     */
+    :root {
+      --demo-bg: #dddbc7;
+      --demo-bg-alt: #e0dfca;
+      --demo-fg: #000;
+      --demo-highlight: #755100;
+      --demo-border: #334155;
+      --demo-muted: #393d42;
+      --demo-radius: 4px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      background: var(--demo-bg);
+    }
+
+    body {
+      margin: 0;
+      color: var(--demo-fg);
+      font-family: "Fira Code", monospace;
+      font-weight: 300;
+      font-size: 16px;
+      line-height: 2;
+      overflow-wrap: break-word;
+    }
+
+    ::selection {
+      background: #ffff0066;
+      color: var(--demo-fg);
+    }
+
+    .demo-page {
+      max-width: 40rem;
+      margin: 0 auto;
+      padding: 4rem 2rem;
+    }
+
+    .demo-header {
+      margin-bottom: 2rem;
+    }
+
+    /* Flipped logo, like the blog's #logo. */
+    .demo-header h1 {
+      display: inline-block;
+      margin: 0;
+      transform: rotateY(180deg);
+    }
+
+    .demo-header github-icon {
+      display: block;
+      width: 2.5rem;
+      margin-top: 1rem;
+    }
+
+    h1,
+    h2 {
+      color: var(--demo-fg);
+      font-family: "Fira Code", monospace;
+      font-size: 1em;
+      font-style: italic;
+      font-weight: 400;
+    }
+
+    .demo-main h2 {
+      margin-top: 0;
+    }
+
+    a,
+    a:visited {
+      color: var(--demo-highlight);
+      font-style: italic;
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    .demo-main {
+      display: block;
+    }
+
+    .demo-footer {
+      margin-top: 2rem;
+      text-align: center;
+    }
+
+    .demo-card {
+      margin-bottom: 2rem;
+    }
+
+    /* Divider between sections. */
+    .demo-card + .demo-card {
+      margin-top: 2rem;
+      padding-top: 2rem;
+      border-top: 1px solid var(--demo-border);
+    }
+
+    /* Layout only — no visual styling of the component's internals. */
+    .demo-connect sync-component {
+      display: block;
+      margin-bottom: 1rem;
+    }
+
+    /*
+     * The component's sync dialog, themed to match the demo page. These
+     * rules live in the demo page only — the library ships no styles.
+     */
+    .demo-connect .sync-dialog {
+      background: var(--demo-bg);
+      color: var(--demo-fg);
+      font-family: "Fira Code", monospace;
+      border: 1px solid var(--demo-border);
+      border-radius: var(--demo-radius);
+      max-width: calc(100% - 2rem);
+    }
+
+    .demo-connect .sync-dialog::backdrop {
+      background: rgba(0, 0, 0, 0.4);
+    }
+
+    .demo-page code {
+      background: var(--demo-bg-alt);
+      border: 1px solid var(--demo-border);
+      border-radius: var(--demo-radius);
+      padding: 0.2em 0.4em;
+    }
+
+    .demo-qr {
+      text-align: center;
+    }
+
+    .demo-qr qr-code {
+      display: block;
+      width: 12rem;
+      margin: 0 auto;
+    }
+
+    .demo-qr qr-code img {
+      width: 100%;
+      height: auto;
+    }
+
+    .demo-qr p {
+      margin: 0.5rem 0 0;
+      font-size: 0.85rem;
+      color: var(--demo-muted);
+    }
+
+    .demo-username {
+      display: block;
+      margin-bottom: 1rem;
+    }
+
+    input,
+    button {
+      font-family: "Fira Code", monospace;
+      font-size: 1em;
+      color: var(--demo-fg);
+      background: var(--demo-bg-alt);
+      border: 1px solid var(--demo-border);
+      border-radius: var(--demo-radius);
+    }
+
+    .demo-username-input {
+      display: block;
+      width: 100%;
+      margin-top: 0.25rem;
+      padding: 0.4rem 0.5rem;
+    }
+
+    .demo-chat-log {
+      list-style: none;
+      margin: 0 0 1rem;
+      padding: 1rem;
+      height: 16rem;
+      overflow-y: auto;
+      background: var(--demo-bg-alt);
+      border: 1px solid var(--demo-border);
+      border-radius: var(--demo-radius);
+    }
+
+    .demo-chat-log li {
+      margin: 0 0 0.4rem;
+    }
+
+    .demo-chat-log .demo-msg-own .demo-msg-name {
+      color: var(--demo-highlight);
+    }
+
+    .demo-chat-log .demo-msg-system {
+      font-style: italic;
+      color: var(--demo-muted);
+    }
+
+    .demo-chat-log .demo-msg-name {
+      font-weight: 500;
+    }
+
+    .demo-chat-form {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .demo-chat-input {
+      flex: 1;
+      min-width: 0;
+      padding: 0.4rem 0.5rem;
+    }
+
+    button {
+      padding: 0.4rem 1rem;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: var(--demo-highlight);
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: default;
+      background: var(--demo-bg-alt);
+    }
+  </style>
   <script type="module" src="./index.js"></script>
+  <script type="module" src="./demo.js"></script>
 </head>
 <body>
-  <sync-component></sync-component>
-
+  <div class="demo-page">
+    <header class="demo-header">
+      <h1>Share Files and Chat</h1>
+      <github-icon href="https://github.com/lnsy-dev/simple-github-icon"></github-icon>
+    </header>
+    <main class="demo-main">
+      <section class="demo-card demo-connect">
+        <h2>Connect</h2>
+        <sync-component></sync-component>
+        <div class="demo-qr">
+          <qr-code size="180"></qr-code>
+          <p>Scan to sync</p>
+        </div>
+      </section>
+      <section class="demo-card demo-chat">
+        <h2>Chat</h2>
+        <label class="demo-username">Your name:
+          <input class="demo-username-input" type="text" maxlength="24" autocomplete="off">
+        </label>
+        <ul class="demo-chat-log"></ul>
+        <form class="demo-chat-form">
+          <input class="demo-chat-input" type="text" placeholder="Type a message…" autocomplete="off" disabled>
+          <button type="submit" disabled>Send</button>
+        </form>
+      </section>
+    </main>
+    <footer class="demo-footer">
+      <a href="https://ko-fi.com/lnsy47369">Found this software useful?</a>
+    </footer>
+  </div>
 </body>
 </html>
