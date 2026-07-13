@@ -4,8 +4,7 @@ A simple component for syncing two browsers with WebRTC
 This component is an easy way to sync
 two web browsers using only an HTML Element.
 
-To use, include this index.js file and linked
-JS files. 
+To use, import the component (see Installation below).
 
 Use like :
 ```html
@@ -22,17 +21,31 @@ about as two specific devices and how they will interact.
 1. **Clone the Repository:**
    Clone or download the repository to your local machine.
 
-2. **Include Dependencies:**
-   Ensure that `peerjs.min.js`, `dataroom-element.js`, and `helpers.js` are included in your project.
-
-3. **Import the Component:**
-   Import the `SyncComponent` class in your project:
-   ```javascript
-   import { SyncComponent } from './path/to/SyncComponent.js';
+2. **Install Dependencies:**
+   ```bash
+   npm install
    ```
+   This installs `peerjs` (the only runtime dependency) and Vite (the build tool).
 
-4. **Custom Element Registration:**
-   The component is automatically registered as a custom element named `sync-component` upon importing.
+3. **Run the Demo:**
+   ```bash
+   npm run dev
+   ```
+   Open the printed local URL to see `<sync-component>` in action.
+
+4. **Build the Library Bundle:**
+   ```bash
+   npm run build
+   ```
+   Outputs a self-contained, minified bundle (with peerjs included) to:
+   - `build/sync-component.min.js` (ES module)
+
+5. **Import the Component:**
+   Import the component in your project — it self-registers as the
+   `sync-component` custom element upon import:
+   ```javascript
+   import './path/to/sync-component.js';
+   ```
 
 ## Usage
 
@@ -43,6 +56,29 @@ To use the `SyncComponent`, simply include the custom tag in your HTML:
 ```
 
 The component handles its initialization and peer-to-peer connection setup automatically.
+
+## Testing
+
+The project has both unit and end-to-end tests:
+
+```bash
+npm test        # unit tests (Vitest + jsdom)
+npm run test:e2e  # end-to-end tests (Playwright)
+npm run test:all  # both
+```
+
+The e2e suite starts the Vite dev server and a local PeerJS signaling
+server (`peer` package, see `e2e/peer-server.mjs`) automatically. Tests run
+two real browser peers that connect and exchange WebRTC messages. The
+component picks up test-only PeerJS options from
+`window.SYNC_COMPONENT_PEER_CONFIG`, which the tests inject via Playwright —
+no configuration is needed to run them.
+
+Before running e2e tests for the first time, install the browser:
+
+```bash
+npx playwright install chromium
+```
 
 ## Events Emitted
 

@@ -1,2 +1,2 @@
-import "./sync-component.js";
+import "./src/sync-component.js";
 
