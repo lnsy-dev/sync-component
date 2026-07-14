@@ -1,16 +1,49 @@
 {
-  "name": "sync-component",
+  "name": "@lnsy/sync-component",
   "version": "0.1.0",
   "description": "A simple component for syncing two browsers with WebRTC",
   "type": "module",
   "license": "MIT",
+  "main": "./build/sync-component.min.js",
+  "module": "./build/sync-component.min.js",
+  "exports": {
+    ".": "./build/sync-component.min.js"
+  },
+  "files": [
+    "build"
+  ],
+  "sideEffects": true,
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "web-component",
+    "custom-element",
+    "webrtc",
+    "peerjs",
+    "p2p",
+    "file-transfer",
+    "sync"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lnsy-dev/sync-component.git"
+  },
+  "homepage": "https://github.com/lnsy-dev/sync-component#readme",
+  "bugs": {
+    "url": "https://github.com/lnsy-dev/sync-component/issues"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "test:all": "vitest run && playwright test"
+    "test:all": "vitest run && playwright test",
+    "prepublishOnly": "npm run build && npm test"
   },
   "dependencies": {
     "peerjs": "^1.5.5"
