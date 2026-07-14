@@ -249,7 +249,13 @@
       background: var(--demo-bg-alt);
     }
   </style>
-  <script type="module" src="./index.js"></script>
+  <!--
+    The demo loads the committed, self-contained bundle (peerjs inlined) so
+    it works when served statically, e.g. on GitHub Pages — bare npm imports
+    like `peerjs` would fail without a bundler. After changing src/, run
+    `npm run build` to refresh the demo.
+  -->
+  <script type="module" src="./build/sync-component.min.js"></script>
   <script type="module" src="./demo.js"></script>
 </head>
 <body>

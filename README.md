@@ -47,7 +47,10 @@ To work on the component itself:
    ```bash
    npm run dev
    ```
-   Open the printed local URL to see `<sync-component>` in action.
+   Open the printed local URL to see `<sync-component>` in action. The demo
+   page loads the committed bundle `build/sync-component.min.js` (the same
+   artifact published to npm), so run `npm run build` after changing `src/`
+   to see your changes in the demo.
 
 4. **Build the Library Bundle:**
    ```bash

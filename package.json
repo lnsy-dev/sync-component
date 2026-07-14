@@ -1,6 +1,6 @@
 {
   "name": "@lnsy/sync-component",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A simple component for syncing two browsers with WebRTC",
   "type": "module",
   "license": "MIT",
@@ -41,8 +41,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:e2e": "playwright test",
-    "test:all": "vitest run && playwright test",
+    "test:e2e": "npm run build && playwright test",
+    "test:all": "vitest run && npm run build && playwright test",
     "prepublishOnly": "npm run build && npm test"
   },
   "dependencies": {
