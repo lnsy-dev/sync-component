@@ -303,4 +303,113 @@ describe('sync-component', () => {
       vi.useRealTimers();
     }
   });
+
+  it('fails fast and retries when ICE negotiation fails', async () => {
+    vi.useFakeTimers();
+    try {
+      let iceCb;
+      const conn = {
+        on: vi.fn((event, cb) => { if (event === 'iceStateChanged') iceCb = cb; }),
+        close: vi.fn()
+      };
+      el.peer = { connect: vi.fn(() => conn) };
+      const retryHandler = vi.fn();
+      el.addEventListener('PEER-CONNECTION-RETRY', retryHandler);
+
+      const promise = el.connectToPeer('target-peer');
+      iceCb('failed');
+      // The attempt ends without waiting out the 10 s timeout.
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(el.peer.connect).toHaveBeenCalledTimes(2);
+      expect(retryHandler).toHaveBeenCalledOnce();
+      expect(conn.close).toHaveBeenCalledOnce();
+
+      // Let the remaining attempts time out so the promise settles.
+      await vi.advanceTimersByTimeAsync(20000);
+      await promise;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not declare an incoming peer connected before the channel opens', () => {
+    const connectedHandler = vi.fn();
+    el.addEventListener('PEER-CONNECTED', connectedHandler);
+    el.handleNewConnection = vi.fn();
+
+    const conn = { on: vi.fn() };
+    el.handleIncomingConnection(conn);
+
+    expect(el.handleNewConnection).not.toHaveBeenCalled();
+    expect(connectedHandler).not.toHaveBeenCalled();
+    expect(el.innerHTML).not.toContain('connected to peer');
+    expect(el.innerHTML).toContain('establishing connection');
+  });
+
+  it('accepts an incoming peer once the data channel opens', () => {
+    const connectedHandler = vi.fn();
+    el.addEventListener('PEER-CONNECTED', connectedHandler);
+    el.handleNewConnection = vi.fn();
+
+    let openCb;
+    const conn = {
+      on: vi.fn((event, cb) => { if (event === 'open') openCb = cb; })
+    };
+    el.handleIncomingConnection(conn);
+    openCb();
+
+    expect(el.handleNewConnection).toHaveBeenCalledWith(conn);
+    expect(connectedHandler).toHaveBeenCalled();
+  });
+
+  it('reports an ICE failure on an incoming connection once', () => {
+    const errHandler = vi.fn();
+    el.addEventListener('PEER-CONNECTION-ERROR', errHandler);
+
+    const callbacks = {};
+    const conn = {
+      on: vi.fn((event, cb) => { callbacks[event] = cb; })
+    };
+    el.handleIncomingConnection(conn);
+
+    callbacks['iceStateChanged']('failed');
+    callbacks['error'](new Error('boom'));
+
+    expect(errHandler).toHaveBeenCalledOnce();
+    expect(errHandler.mock.calls[0][0].detail.type).toBe('ice-failed');
+    expect(el.innerHTML).toContain('NAT-traversal');
+  });
+
+  it('ignores ICE state changes after the incoming connection has opened', () => {
+    const errHandler = vi.fn();
+    el.addEventListener('PEER-CONNECTION-ERROR', errHandler);
+
+    const callbacks = {};
+    const conn = {
+      open: true,
+      on: vi.fn((event, cb) => { callbacks[event] = cb; })
+    };
+    el.handleIncomingConnection(conn);
+
+    callbacks['iceStateChanged']('failed');
+
+    expect(errHandler).not.toHaveBeenCalled();
+  });
+
+  it('extends rather than replaces the default ICE servers', () => {
+    window.SYNC_COMPONENT_PEER_CONFIG = {
+      host: 'example.com',
+      config: { iceServers: [{ urls: 'turn:turn.example.com:3478' }] }
+    };
+    try {
+      const config = el.buildPeerConfig();
+
+      expect(config.host).toBe('example.com');
+      expect(config.config.iceServers.length).toBeGreaterThan(1);
+      expect(config.config.iceServers.at(-1)).toEqual({ urls: 'turn:turn.example.com:3478' });
+    } finally {
+      delete window.SYNC_COMPONENT_PEER_CONFIG;
+    }
+  });
 });

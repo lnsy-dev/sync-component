@@ -14,7 +14,7 @@
  *   - ./helpers.js for URL parsing
  */
 
-import { Peer } from 'peerjs';
+import { Peer, util } from 'peerjs';
 import { getURLValues, generatePeerCode } from './helpers.js';
 import { FileSender, FileReceiver } from './file-transfer.js';
 import { DataroomElement } from './dataroom-element.js';
@@ -38,7 +38,7 @@ class SyncComponent extends DataroomElement {
    * (defaults to the public PeerJS cloud server when unset).
    */
   async initialize(){
-    const peerConfig = window.SYNC_COMPONENT_PEER_CONFIG || {};
+    const peerConfig = this.buildPeerConfig();
     this.peer = new Peer(generatePeerCode(), peerConfig);
     this.peer.on('error', (e) => {
       this.handleError(e)
@@ -48,14 +48,77 @@ class SyncComponent extends DataroomElement {
       this.handleServerOpen(id);
     });
     this.peer.on('connection', (conn) => {
-      this.dtrmEvent('PEER-CONNECTED')
-      this.innerHTML = 'connected to peer'
-      this.handleNewConnection(conn);
+      this.handleIncomingConnection(conn);
     });
 
     this.peer.on('disconnected', () => {
       this.handleDisconnection();
     })
+  }
+
+  /**
+   * Build the PeerJS options object from window.SYNC_COMPONENT_PEER_CONFIG.
+   *
+   * PeerJS replaces its built-in STUN/TURN servers wholesale when a custom
+   * `config` is passed, so a user-supplied `config.iceServers` list is made
+   * to EXTEND the defaults instead of dropping them — adding a TURN server
+   * should increase reachability, not remove the fallback servers.
+   * @return {Object} the PeerJS options.
+   */
+  buildPeerConfig(){
+    const peerConfig = { ...(window.SYNC_COMPONENT_PEER_CONFIG || {}) };
+    if(peerConfig.config?.iceServers){
+      peerConfig.config = {
+        ...peerConfig.config,
+        iceServers: [...util.defaultConfig.iceServers, ...peerConfig.config.iceServers]
+      };
+    }
+    return peerConfig;
+  }
+
+  /**
+   * Handle an incoming connection offer from a peer.
+   *
+   * PeerJS fires the peer-level 'connection' event when the signaling offer
+   * arrives — BEFORE the WebRTC data channel is open. Declaring the peer
+   * connected here would be a lie whenever ICE negotiation then fails (e.g.
+   * unreachable NATs with no working TURN path), so we wait for the
+   * connection's 'open' event and surface failures instead.
+   * @param {Object} conn - The incoming data connection.
+   */
+  handleIncomingConnection(conn){
+    this.innerHTML = 'Peer found, establishing connection…';
+    conn.on('open', () => {
+      this.dtrmEvent('PEER-CONNECTED');
+      this.handleNewConnection(conn);
+    });
+    this.watchConnectionFailure(conn);
+  }
+
+  /**
+   * Watch a not-yet-open data connection for hard failures. An ICE 'failed'
+   * state or a connection error before 'open' means the two browsers cannot
+   * reach each other (usually NAT traversal with no working TURN path);
+   * report it once via PEER-CONNECTION-ERROR with an actionable message.
+   * @param {Object} conn - The data connection.
+   */
+  watchConnectionFailure(conn){
+    let reported = false;
+    const fail = (err) => {
+      if(reported || conn.open) return;
+      reported = true;
+      this.dtrmEvent('PEER-CONNECTION-ERROR', err);
+      this.innerHTML = `<error>Could not connect to peer. The connection failed — this is usually a network/NAT-traversal problem between the two browsers. If it keeps happening on different networks, configure a TURN server (see the README's Configuration section).</error>`;
+    };
+    conn.on('iceStateChanged', (state) => {
+      if(state === 'failed'){
+        fail({
+          type: 'ice-failed',
+          message: 'Could not establish a peer-to-peer connection (ICE negotiation failed)'
+        });
+      }
+    });
+    conn.on('error', (err) => fail(err));
   }
 
   /**
@@ -312,7 +375,9 @@ class SyncComponent extends DataroomElement {
    * error, leaving the UI stuck on "Connecting…" forever. To avoid that,
    * we wait at most CONNECT_TIMEOUT_MS for the connection's 'open' event,
    * retry up to MAX_CONNECT_ATTEMPTS times, and finally give up with a
-   * visible error and a PEER-CONNECTION-ERROR event.
+   * visible error and a PEER-CONNECTION-ERROR event. An explicit ICE
+   * failure ('failed' state or connection error) ends the attempt early
+   * instead of waiting out the full timeout.
    *
    * If the peer does not exist at all, the server tells us via a
    * peer-level 'peer-unavailable' error handled in handleError; the
@@ -326,11 +391,18 @@ class SyncComponent extends DataroomElement {
     }
     const conn = this.peer.connect(target_id);
     const opened = await new Promise((resolve) => {
-      const timer = setTimeout(() => resolve(false), CONNECT_TIMEOUT_MS);
-      conn.on('open', () => {
+      const done = (result) => {
         clearTimeout(timer);
-        resolve(true);
+        resolve(result);
+      };
+      const timer = setTimeout(() => done(false), CONNECT_TIMEOUT_MS);
+      conn.on('open', () => done(true));
+      // ICE negotiation can fail fast and explicitly (a 'failed' ICE state
+      // or a connection error); don't sit out the full timeout in that case.
+      conn.on('iceStateChanged', (state) => {
+        if(state === 'failed') done(false);
       });
+      conn.on('error', () => done(false));
     });
     if(this._connectFailed){
       conn.close();
@@ -352,7 +424,7 @@ class SyncComponent extends DataroomElement {
       message: `Could not connect to peer ${target_id}: connection timed out`
     };
     this.dtrmEvent('PEER-CONNECTION-ERROR', err);
-    this.innerHTML = `<error>Could not connect to peer. The connection timed out. Please check the link or try again.</error>`
+    this.innerHTML = `<error>Could not connect to peer. The connection timed out. This is often a network/NAT-traversal problem between the two browsers — if it keeps happening on different networks, configure a TURN server (see the README's Configuration section). Please check the link or try again.</error>`
   }
 }
 

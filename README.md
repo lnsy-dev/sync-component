@@ -132,6 +132,37 @@ element connects; its contents are passed through as PeerJS options:
 <sync-component></sync-component>
 ```
 
+### Connecting across different networks (TURN servers)
+
+If the host browser reports an incoming peer but the connecting browser
+times out with "Could not connect to peer", the two browsers could not
+establish a direct WebRTC path — usually because of NAT traversal (the
+built-in STUN/TURN servers are blocked or unreachable, e.g. on networks
+that disallow outbound UDP). The fix is to provide a reachable TURN server
+via `config.iceServers`. Your servers are added **on top of** the PeerJS
+built-in defaults:
+
+```html
+<script>
+  window.SYNC_COMPONENT_PEER_CONFIG = {
+    config: {
+      iceServers: [
+        {
+          urls: 'turn:turn.example.com:3478',
+          username: 'user',
+          credential: 'pass'
+        }
+      ]
+    }
+  };
+</script>
+<sync-component></sync-component>
+```
+
+You can run your own TURN server with [coturn](https://github.com/coturn/coturn)
+or use a hosted TURN provider.
+
+
 ## Events Emitted
 
 The component dispatches `CustomEvent`s from the element itself (they do
