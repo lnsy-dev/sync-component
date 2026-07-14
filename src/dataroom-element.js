@@ -23,8 +23,7 @@ export class DataroomElement extends HTMLElement {
   }
 
   disconnectedCallback() {
-    this.childNodeObserver.disconnect();
-    this.attributeObserver.disconnect();
+    this.childNodeObserver?.disconnect();
     this.disconnect();
   }
 
