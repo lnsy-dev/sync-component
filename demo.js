@@ -96,6 +96,7 @@ function initDemo() {
   syncComponent.addEventListener('PEER-CONNECTED', () => {
     chatInput.disabled = false;
     chatButton.disabled = false;
+    fileButton.disabled = false;
     document.querySelector('.demo-qr').hidden = true;
     if (!peerAnnounced) {
       peerAnnounced = true;
@@ -122,7 +123,108 @@ function initDemo() {
     }
   });
 
-  // --- File transfer notices ---
+  // --- Files ---
+  // The library routes transfer acknowledgements to a single active
+  // FileSender, so selected files are queued and sent one at a time.
+  const fileForm = document.querySelector('.demo-file-form');
+  const fileInput = document.querySelector('.demo-file-input');
+  const fileButton = fileForm.querySelector('button');
+  const fileList = document.querySelector('.demo-file-list');
+  const fileStatus = document.querySelector('.demo-file-transfer-status');
+
+  fileButton.disabled = true;
+
+  function addFileEntry(name) {
+    const li = document.createElement('li');
+    li.appendChild(document.createTextNode(name));
+    const status = document.createElement('span');
+    status.className = 'demo-file-status';
+    li.appendChild(status);
+    fileList.appendChild(li);
+    fileList.scrollTop = fileList.scrollHeight;
+    return li;
+  }
+
+  const sendQueue = [];
+  let sending = false;
+  let activeSendEntry = null;
+
+  fileForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (!syncComponent.peer_connection) return;
+    const files = Array.from(fileInput.files);
+    if (!files.length) return;
+    for (const file of files) {
+      const li = addFileEntry(file.name);
+      li.querySelector('.demo-file-status').textContent = ' — queued';
+      sendQueue.push({ file, li });
+    }
+    fileInput.value = '';
+    pumpSendQueue();
+  });
+
+  async function pumpSendQueue() {
+    if (sending) return;
+    sending = true;
+    while (sendQueue.length) {
+      const { file, li } = sendQueue.shift();
+      activeSendEntry = li;
+      li.querySelector('.demo-file-status').textContent = ' — sending…';
+      await syncComponent.sendFile(file);
+      activeSendEntry = null;
+    }
+    sending = false;
+  }
+
+  syncComponent.addEventListener('FILE-TRANSFER-PROGRESS', (e) => {
+    const { sent, total, received, transferId } = e.detail;
+    if (sent !== undefined) {
+      // Sender-side progress belongs to whichever queue entry is active.
+      if (!activeSendEntry) return;
+      activeSendEntry.querySelector('.demo-file-status').textContent = total
+        ? ` — sending ${sent}/${total} chunks`
+        : ' — sending…';
+    } else if (transferId !== undefined) {
+      // Receiver-side progress; the file is listed once FILE-RECEIVED
+      // arrives with its name.
+      fileStatus.textContent = `Receiving file: ${received ?? 0}/${total} chunks`;
+    }
+  });
+
+  syncComponent.addEventListener('FILE-TRANSFER-COMPLETE', (e) => {
+    if (activeSendEntry) {
+      activeSendEntry.querySelector('.demo-file-status').textContent =
+        ` — sent (${e.detail.size} bytes)`;
+    }
+  });
+
+  syncComponent.addEventListener('FILE-TRANSFER-ERROR', (e) => {
+    if (activeSendEntry) {
+      activeSendEntry.querySelector('.demo-file-status').textContent =
+        ` — failed: ${e.detail.error}`;
+    } else {
+      fileStatus.textContent = `Transfer failed: ${e.detail.error}`;
+    }
+  });
+
+  syncComponent.addEventListener('FILE-RECEIVED', (e) => {
+    const { blob, name, size } = e.detail;
+    fileStatus.textContent = '';
+    const li = document.createElement('li');
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = name;
+    link.textContent = name;
+    li.appendChild(link);
+    const status = document.createElement('span');
+    status.className = 'demo-file-status';
+    status.textContent = ` — received (${size} bytes)`;
+    li.appendChild(status);
+    fileList.appendChild(li);
+    fileList.scrollTop = fileList.scrollHeight;
+  });
+
+  // --- File transfer notices in the chat log ---
   syncComponent.addEventListener('FILE-TRANSFER-COMPLETE', (e) => {
     addMessage('demo-msg-system', null, `File sent: ${e.detail.name}`);
   });

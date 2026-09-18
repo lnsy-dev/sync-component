@@ -182,6 +182,89 @@ test('sends a file chosen in the file input and shows a download link', async ({
   }
 });
 
+/**
+ * On the receiving page, arm a promise that resolves once `count` files
+ * have arrived, collecting name, size and FNV-1a checksum for each.
+ */
+async function armMultiReceiver(page, count) {
+  await page.evaluate((n) => {
+    window.__filesReceived = [];
+    window.__allFilesReceived = new Promise((resolve, reject) => {
+      const el = document.querySelector('sync-component');
+      el.addEventListener('FILE-RECEIVED', async (e) => {
+        const bytes = new Uint8Array(await e.detail.blob.arrayBuffer());
+        const { checksum } = await import('/src/file-transfer.js');
+        window.__filesReceived.push({
+          name: e.detail.name,
+          size: e.detail.size,
+          checksum: checksum(bytes)
+        });
+        if (window.__filesReceived.length === n) resolve();
+      });
+      el.addEventListener('FILE-TRANSFER-ERROR', (e) =>
+        reject(new Error(e.detail.error))
+      );
+    });
+  }, count);
+}
+
+test('sends multiple files picked in the demo file input', async ({
+  browser
+}) => {
+  const { contextA, contextB, pageA, pageB } = await connectPair(browser);
+  try {
+    const files = [
+      { name: 'first.txt', mimeType: 'text/plain', size: 100 * 1024, k: 3 },
+      { name: 'second.bin', mimeType: 'application/octet-stream', size: 300 * 1024, k: 11 }
+    ];
+    const buffers = files.map(({ size, k }) => {
+      const buffer = Buffer.alloc(size);
+      for (let i = 0; i < size; i++) buffer[i] = (i * k + 5) % 251;
+      return buffer;
+    });
+
+    await armMultiReceiver(pageB, files.length);
+
+    const expectedChecksums = await pageA.evaluate(async (buffers) => {
+      const { checksum } = await import('/src/file-transfer.js');
+      return buffers.map((bytes) => checksum(new Uint8Array(bytes)));
+    }, buffers.map((buffer) => Array.from(buffer)));
+
+    await pageA.setInputFiles(
+      '.demo-file-input',
+      files.map((file, i) => ({
+        name: file.name,
+        mimeType: file.mimeType,
+        buffer: buffers[i]
+      }))
+    );
+    await pageA.click('.demo-file-form button[type="submit"]');
+
+    await pageB.evaluate(() => window.__allFilesReceived);
+    const received = await pageB.evaluate(() => window.__filesReceived);
+    expect(received.map((f) => f.name)).toEqual(['first.txt', 'second.bin']);
+    received.forEach((file, i) => {
+      expect(file.size).toBe(files[i].size);
+      expect(file.checksum).toBe(expectedChecksums[i]);
+    });
+
+    // The demo lists each received file as a download link, in order.
+    const links = pageB.locator('.demo-file-list a');
+    await expect(links).toHaveCount(2);
+    await expect(links.nth(0)).toHaveAttribute('download', 'first.txt');
+    await expect(links.nth(1)).toHaveAttribute('download', 'second.bin');
+
+    // The sender's list shows both files as sent.
+    await expect(pageA.locator('.demo-file-list li')).toHaveText([
+      /first\.txt — sent \(\d+ bytes\)/,
+      /second\.bin — sent \(\d+ bytes\)/
+    ]);
+  } finally {
+    await contextA.close();
+    await contextB.close();
+  }
+});
+
 test('transfers a 5 MB file without flooding the data channel', async ({
   browser
 }) => {

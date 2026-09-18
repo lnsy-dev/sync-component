@@ -173,6 +173,53 @@
       color: var(--demo-muted);
     }
 
+    .demo-file-form {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .demo-file-input {
+      flex: 1;
+      min-width: 0;
+      padding: 0.3rem 0.5rem;
+    }
+
+    /* Receiving status line ("Receiving file: x/y chunks"). */
+    .demo-file-transfer-status {
+      margin: 0.5rem 0 0;
+      font-style: italic;
+      color: var(--demo-muted);
+    }
+
+    .demo-file-transfer-status:empty {
+      display: none;
+    }
+
+    .demo-file-list {
+      list-style: none;
+      margin: 0.5rem 0 0;
+      padding: 0.5rem 1rem;
+      max-height: 12rem;
+      overflow-y: auto;
+      background: var(--demo-bg-alt);
+      border: 1px solid var(--demo-border);
+      border-radius: var(--demo-radius);
+    }
+
+    /* Only take up space once there is something to show. */
+    .demo-file-list:empty {
+      display: none;
+    }
+
+    .demo-file-list li {
+      margin: 0 0 0.4rem;
+    }
+
+    .demo-file-list .demo-file-status {
+      font-style: italic;
+      color: var(--demo-muted);
+    }
+
     .demo-username {
       display: block;
       margin-bottom: 1rem;
@@ -272,6 +319,15 @@
           <qr-code size="180"></qr-code>
           <p>Scan to sync</p>
         </div>
+      </section>
+      <section class="demo-card demo-files">
+        <h2>Files</h2>
+        <form class="demo-file-form">
+          <input class="demo-file-input" type="file" multiple>
+          <button type="submit" disabled>Send files</button>
+        </form>
+        <p class="demo-file-transfer-status" aria-live="polite"></p>
+        <ul class="demo-file-list"></ul>
       </section>
       <section class="demo-card demo-chat">
         <h2>Chat</h2>
